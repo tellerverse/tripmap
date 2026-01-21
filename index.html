@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reisekarte mit Ländern & Flugzeugen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<div class="controls">
+  Planes <button id="loadPlanesBtn">x</button>
+  <div class="my-controls">
+    Zoom:
+    <button id="myZoomIn">+</button>
+    <button id="myZoomOut">−</button>
+  </div>
+</div>
+<div id="infoPanel">Klicke ein Land, um Infos zu sehen.</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+  import { ref, get, set } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-database.js";
+  import { db } from "./database.js";
+  import { countryCapitals } from "./data.js";
+  const map = L.map("map", { zoomControl:false }).setView([20, 0], 3);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap contributors" }).addTo(map);
+  // L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution: "© OpenStreetMap © CARTO"}).addTo(map);
+  const infoPanel = document.getElementById('infoPanel');
+
+  const defaultStyle = { color: "#555", weight: 1, fillOpacity: 0 };
+  const hoverStyle = { color: "var(--color)", weight: 2, fillOpacity: 1, fillColor: "var(--bgcolor)" };
+  let geojsonLayer;
+
+  function onEachCountry(feature, layer) {
+    layer.on({
+      mouseover: e => { geojsonLayer.resetStyle(); e.target.setStyle(hoverStyle); e.target.bringToFront(); },
+      mouseout: () => geojsonLayer.resetStyle(),
+      click: () => fetchWikiIntro(feature.properties.ADMIN)
+    });
+  }
+
+  fetch("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson")
+    .then(res => res.json())
+    .then(data => {
+      geojsonLayer = L.geoJSON(data, { style: defaultStyle, onEachFeature: onEachCountry }).addTo(map);
+    });
+
+  const countryToWiki = {
+    Germany: "Germany",
+    France: "France",
+    Spain: "Spain"
+  };
+
+  async function fetchWikiIntro(countryName) {
+    infoPanel.textContent = `Lade Infos zu ${countryName}…`;
+    try {
+      const wikiTitle = countryToWiki[countryName] || countryName;
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitle)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Wikipedia-Eintrag nicht gefunden.");
+      const data = await res.json();
+      infoPanel.textContent = data.extract || "Keine Informationen verfügbar.";
+    } catch(e) {
+      infoPanel.textContent = `Fehler beim Laden von ${countryName}.`;
+      console.error(e);
+    }
+  }
+
+  // Zoom Buttons
+  document.getElementById("myZoomIn").addEventListener("click", () => map.zoomIn());
+  document.getElementById("myZoomOut").addEventListener("click", () => map.zoomOut());
+  
+  // Flugzeug-Logik
+  let planeMarkers = [];
+  let selectedRoute = null;
+  let buttonCooldown = false;
+
+  const loadPlanesBtn = document.getElementById('loadPlanesBtn');
+  loadPlanesBtn.addEventListener('click', async () => {
+    // Hole Zeitstempel aus Firestore
+    const snapshot = await get(ref(db, `planes/cooldown`));
+    const now = Date.now();
+
+    if(snapshot.exists()) {
+      const lastTime = snapshot.val() || 0;
+      if(now - lastTime < 30000) {
+        const wait = Math.ceil((30000 - (now - lastTime))/1000);
+        alert(`Bitte noch ${wait} Sekunden warten!`);
+        return;
+      }
+    }
+
+    // Cooldown aktualisieren
+    await set(ref(db, `planes/cooldown`), now);
+
+    // Flugzeuge laden
+    loadPlanes();
+  });
+
+  async function loadPlanes() {
+    try {
+      const res = await fetch("https://opensky-network.org/api/states/all");
+      const data = await res.json();
+
+      // Alte Marker entfernen
+      planeMarkers.forEach(m => map.removeLayer(m));
+      if(selectedRoute) { map.removeLayer(selectedRoute); selectedRoute = null; }
+      planeMarkers = [];
+
+      data.states.forEach(state => {
+        const [icao24, callsign, originCountry, timePos, lastContact, lon, lat, baroAlt, onGround] = state;
+
+        if(!onGround && lat && lon) {
+          const capital = countryCapitals[originCountry]; // Hauptstadt als Ziel
+          const marker = L.circleMarker([lat, lon], { 
+            radius:5, 
+            color:'blue', 
+            fillColor:'blue', 
+            fillOpacity:1,
+            pane: 'markerPane' 
+          }).addTo(map);
+
+          marker.planeData = { 
+            start: [lat, lon], 
+            end: capital || null, // Hauptstadt oder null
+            callsign: callsign?.trim() || "Unbekannt",
+            country: originCountry
+          };
+
+          marker.on('mouseover', () => {
+            marker.setStyle({ radius:8, fillColor:'cyan', color:'cyan' });
+            marker.bringToFront();
+          });
+          marker.on('mouseout', () => {
+            const isSelected = selectedRoute && planeMarkers.some(m => m===marker && m.getLatLng().equals(marker.getLatLng()));
+            marker.setStyle({ radius:5, fillColor: 'blue', color:'blue', fillOpacity: isSelected ? 1 : 1 });
+          });
+
+          marker.on('click', () => highlightPlane(marker));
+
+          planeMarkers.push(marker);
+        }
+
+      });
+
+      console.log(`Es wurden ${planeMarkers.length} Flugzeuge geladen.`);
+
+    } catch(err) {
+      console.error("Fehler beim Laden der OpenSky-Daten:", err);
+      alert("Fehler beim Laden der Flugzeugdaten. Eventuell CORS-Problem.");
+    }
+  }
+
+  function highlightPlane(selected) {
+    const p = selected.planeData;
+    console.log(`Flugzeug angeklickt: ${p.callsign} | Herkunft: ${p.country} | Position: [${p.start}]`);
+
+    planeMarkers.forEach(m => m.setStyle({ fillOpacity: m===selected ? 1 : 0.1 }));
+
+    if(selectedRoute) map.removeLayer(selectedRoute);
+
+    if(p.end) { // nur wenn Hauptstadt bekannt
+      selectedRoute = L.polyline([p.start, p.end], { color:'red', weight:2 }).addTo(map);
+      const bounds = L.latLngBounds([p.start, p.end]);
+      map.fitBounds(bounds.pad(0.3));
+    }
+  }
+
+
+
+</script>
+
+</body>
+</html>
