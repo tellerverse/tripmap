@@ -170,7 +170,7 @@
   });
 
   async function fetchAIIntro(countryName) {
-    const res = await fetch("/tripmap/api/getIntro", {
+    const res = await fetch("/api/getIntro", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ countryName })
