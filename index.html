@@ -145,8 +145,6 @@
         blinkingLayers = [];
         infoPanel.textContent = `Ausgewähltes Land: ${selectedCountryName}`;
         fetchAIIntro(selectedCountryName);
-        // Oder Wikipedia-Intro:
-        fetchWikiIntro(selectedCountryName);
       }
     });
   }
@@ -179,6 +177,9 @@
 
     if (!res.ok) {
       infoPanel.textContent = "KI-Text konnte nicht geladen werden.";
+      setTimeout(() => {
+        fetchWikiIntro(countryName);
+      }, 2000);
       return;
     }
 
@@ -249,7 +250,6 @@
       return inside;
     });
   }
-
 
   async function loadPlanes() {
     if (!selectedCountryPolygon) {
