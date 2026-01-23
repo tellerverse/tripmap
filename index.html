@@ -176,9 +176,15 @@
       body: JSON.stringify({ countryName })
     });
 
+    if (!res.ok) {
+      infoPanel.textContent = "KI-Text konnte nicht geladen werden.";
+      return;
+    }
+
     const data = await res.json();
     infoPanel.textContent = data.text;
   }
+
   
   const countryToWiki = {
     Germany: "Germany",
