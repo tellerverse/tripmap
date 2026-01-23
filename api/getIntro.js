@@ -2,6 +2,8 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+  console.log("KEY vorhanden:", !!process.env.OPENAI_API_KEY);
+  console.log("KEY2 vorhanden:", !!process.env.OPENAIAPIKEY);
 
   const { countryName } = req.body;
 
