@@ -1,4 +1,5 @@
 export default async function handler(req, res) {
+  console.log("KEY 2 vorhanden:", !!process.env.AVIATIONSTACK_API_KEY);
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { countryName } = req.body;
@@ -15,6 +16,7 @@ export default async function handler(req, res) {
   if (!airports || airports.length === 0) return res.status(404).json({ planes: [] });
 
   const airportParam = airports.join(",");
+  console.log("Lade Flugdaten für Flughäfen:", airportParam);
 
   try {
     const response = await fetch(`http://api.aviationstack.com/v1/flights?access_key=${process.env.AVIATIONSTACK_API_KEY}&dep_icao=${airportParam}`);

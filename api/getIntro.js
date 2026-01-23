@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  console.log("KEY vorhanden:", !!process.env.OPENAI_API_KEY);
+  console.log("KEY vorhanden:", !!process.env.OPENROUTER_API_KEY);
   console.log("KEY 2 vorhanden:", !!process.env.tripmapapikey);
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
