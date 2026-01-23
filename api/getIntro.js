@@ -1,36 +1,23 @@
-export const config = {
-  runtime: "edge"
-};
-
 export default async function handler(req, res) {
+  console.log("KEY vorhanden:", !!process.env.OPENAI_API_KEY);
+  console.log("KEY 2 vorhanden:", !!process.env.tripmapapikey);
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-  console.log("KEY vorhanden:", !!process.env.OPENAI_API_KEY);
-  console.log("KEY vorhanden:", !!process.env.tripmapapikey);
-  const { countryName } = req.body;
 
-  if (!countryName) {
-    return res.status(400).json({ error: "countryName fehlt" });
-  }
+  const { countryName } = req.body;
+  if (!countryName) return res.status(400).json({ error: "countryName fehlt" });
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://tripmap-three.vercel.app", // optional, aber empfohlen
-        "X-Title": "TripMap"
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-chat", // ✅ kostenlos
-        messages: [
-          {
-            role: "user",
-            content: `Schreibe einen kurzen, sachlichen Text über ${countryName} (max. 120 Wörter).`
-          }
-        ],
+        model: "deepseek/deepseek-chat",
+        messages: [{ role: "user", content: `Schreibe einen kurzen, sachlichen Text über ${countryName} (max. 120 Wörter).` }],
         temperature: 0.7,
         max_tokens: 200
       })
@@ -43,12 +30,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "OpenRouter API Fehler", details: data });
     }
 
-    res.status(200).json({
-      text: data.choices[0].message.content
-    });
+    res.status(200).json({ text: data.choices[0]?.message?.content || "Keine Antwort erhalten" });
 
   } catch (err) {
     console.error("Server error:", err);
     res.status(500).json({ error: "Server error" });
   }
 }
+
