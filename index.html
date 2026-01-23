@@ -251,82 +251,51 @@
     });
   }
 
+
   async function loadPlanes() {
     if (!selectedCountryPolygon) {
       alert("Bitte zuerst ein Land auswählen.");
       return;
     }
     try {
-      const res = await fetch("https://opensky-network.org/api/states/all");
-      const data = await res.json();
+      const res = await fetch("/api/getPlanes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ countryName: selectedCountryName })
+      });
+
+      if (!res.ok) throw new Error("API Fehler");
+
+      const { planes } = await res.json();
 
       // Alte Marker entfernen
       planeMarkers.forEach(m => map.removeLayer(m));
       if(selectedRoute) { map.removeLayer(selectedRoute); selectedRoute = null; }
       planeMarkers = [];
 
-      data.states.forEach(state => {
-        const [icao24, callsign, originCountry, timePos, lastContact, lon, lat, baroAlt, onGround] = state;
+      planes.forEach(f => {
+        const marker = L.marker([f.lat, f.lon], { icon: planeIcon, pane: "markerPane" }).addTo(map);
+        marker.planeData = {
+          start: [f.lat, f.lon],
+          end: f.destination ? countryCapitals[f.destination] || null : null,
+          callsign: f.callsign,
+          country: f.originCountry
+        };
 
-        if (
-          // !onGround &&
-          lat &&
-          lon &&
-          pointInPolygon([lon, lat], selectedCountryPolygon)
-        ) {
+        marker.on("mouseover", () => marker.getElement()?.classList.add("hovered"));
+        marker.on("mouseout", () => marker.getElement()?.classList.remove("hovered"));
+        marker.on("click", () => highlightPlane(marker));
 
-          const capital = countryCapitals[originCountry]; // Hauptstadt als Ziel
-          const marker = L.marker([lat, lon], {
-            icon: planeIcon,
-            pane: "markerPane"
-          }).addTo(map);
-
-
-          marker.planeData = { 
-            start: [lat, lon], 
-            end: capital || null, // Hauptstadt oder null
-            callsign: callsign?.trim() || "Unbekannt",
-            country: originCountry
-          };
-
-          marker.on("mouseover", () => {
-            marker.getElement()?.classList.add("hovered");
-          });
-
-          marker.on("mouseout", () => {
-            marker.getElement()?.classList.remove("hovered");
-          });
-
-
-          marker.on('click', () => highlightPlane(marker));
-
-          planeMarkers.push(marker);
-        }
-
+        planeMarkers.push(marker);
       });
 
       console.log(`Es wurden ${planeMarkers.length} Flugzeuge geladen.`);
-      // Hole Zeitstempel aus Firestore
-      const snapshot = await get(ref(db, `planes/cooldown`));
-      const now = Date.now();
-
-      if(snapshot.exists()) {
-        const lastTime = snapshot.val() || 0;
-        if(now - lastTime < 30000) {
-          const wait = Math.ceil((30000 - (now - lastTime))/1000);
-          alert(`Bitte noch ${wait} Sekunden warten!`);
-          return;
-        }
-      }
-
-      // Cooldown aktualisieren
-      await set(ref(db, `planes/cooldown`), now);
-
     } catch(err) {
-      console.error("Fehler beim Laden der OpenSky-Daten:", err);
-      alert("Fehler beim Laden der Flugzeugdaten. Eventuell CORS-Problem.");
+      console.error("Fehler beim Laden der AviationStack-Daten:", err);
+      alert("Flugzeugdaten konnten nicht geladen werden.");
     }
   }
+
 
   function highlightPlane(selected) {
     planeMarkers.forEach(m => {
