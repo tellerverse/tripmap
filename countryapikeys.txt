@@ -1,0 +1,36 @@
+name Algeria, People's Democratic Republic of Algeria, الجمهورية الديمقراطية الشعبية الجزائرية, الجزائر
+tld .dz, الجزائر.
+cca2 DZ
+ccn3 012
+cioc ALG
+independent true
+status officially-assigned
+unMember true
+currencies د.ج, Algerian dinar
+idd +2, 13
+capital Algiers
+altSpellings DZ, Dzayer, Algérie
+region Africa
+subregion Northern Africa
+languages Arabic
+latlng 28, 3
+landlocked false
+borders TUN, LBY, NER, ESH, MRT, MLI, MAR
+area 2381741
+demonyms Algerian, Algerian, Algérienne, Algérien
+cca3 DZA
+translations الجمهورية الديمقراطية الشعبية الجزائرية, الجزائر, Republik Aljerian Demokratel ha Poblel, Aljeria, Alžírská demokratická a lidová republika, Alžírsko, Gweriniaeth Ddemocrataidd Pobl Algeria, Algeria, Demokratische Volksrepublik Algerien, Algerien, Alžeeria Demokraatlik Rahvavabariik, Alžeeria, Algerian demokraattinen kansantasavalta, Algeria, République démocratique et populaire d'Algérie, Algérie, Narodna Demokratska Republika Alžir, Alžir, Algériai Népi Demokratikus Köztársaság, Algéria, Republik Demokratik Rakyat Aljazair, Aljazair, Repubblica popolare democratica di Algeria, Algeria, アルジェリア人民民主共和国, アルジェリア, 알제리 인민 민주 공화국, 알제리, Democratische Volksrepubliek Algerije, Algerije, جمهوری دموکراتیک خلق الجزایر, الجزایر, Algierska Republika Ludowo-Demokratyczna, Algieria, República Argelina Democrática e Popular, Argélia, Народно-Демократическая Республика Алжир, Алжир, Alžírska demokratická ľudová republika, Alžírsko, República Argelina Democrática y Popular, Argelia, Народна Демократска Република Алжир, Алжир, Demokratiska folkrepubliken Algeriet, Algeriet, Cezayir Demokratik Halk Cumhuriyeti, Cezayir, عوامی جمہوری جمہوریہ الجزائر, الجزائر, 阿尔及利亚人民民主共和国, 阿尔及利亚
+flag 🇩🇿
+maps https://goo.gl/maps/RsAyAfyaiNVb8DpW8, https://www.openstreetmap.org/relation/192756
+population 47400000
+gini 27.6
+fifa ALG
+car DZ, right
+timezones UTC+01:00
+continents Africa
+flags https://flagcdn.com/w320/dz.png, https://flagcdn.com/dz.svg, The flag of Algeria features two equal vertical bands of green and white. A five-pointed red star within a fly-side facing red crescent is centered over the two-color boundary.
+coatOfArms https://mainfacts.com/media/images/coats_of_arms/dz.png, https://mainfacts.com/media/images/coats_of_arms/dz.svg
+startOfWeek sunday
+capitalInfo 36.75, 3.05
+postalCode #####, ^(\d{5})$
+ 

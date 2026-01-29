@@ -2,21 +2,29 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
-  <title>Reisekarte mit Ländern & Flugzeugen</title>
+  <title>tripmap</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div class="controls">
-  Planes <button id="loadPlanesBtn">x</button>
-  <div class="my-controls">
-    Zoom:
-    <button id="myZoomIn">+</button>
-    <button id="myZoomOut">−</button>
-  </div>
+<div class="controls options">
+  <!-- <div class="function"><button id="">✈️</button><span>Option 1</span></div> -->
+  <div class="function"><button id="myZoomIn">➕</button><span>Zoom In</span></div>
+  <div class="function"><button id="myZoomOut">➖</button><span>Zoom Out</span></div>
 </div>
-<div id="infoPanel">Klicke ein Land, um Infos zu sehen.</div>
+
+<div class="controls pencil">
+  <div class="function"><button data-mode="country">🖱️</button></div>
+  <div class="function"><button data-mode="distance">✈️</button></div>
+  <div class="function"><button data-mode="trip">📍</button></div>
+</div>
+<div id="infoPanel">
+  <div id="infoName">Click somewher...</div>
+  <div id="infoContent">Click on a country to see more information here.</div>
+</div>
+<div id="infoRest"></div>
+
 <div id="map"></div>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -28,8 +36,13 @@
   const map = L.map("map", { zoomControl:false }).setView([20, 0], 3);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap contributors" }).addTo(map);
   // L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{attribution: "© OpenStreetMap © CARTO"}).addTo(map);
-  const infoPanel = document.getElementById('infoPanel');
+  const infoContent = document.getElementById('infoContent');
+  const infoName = document.getElementById('infoName');
+  const infoRest = document.getElementById('infoRest');
 
+  let comparisonLayer = null;
+  let comparisonFeature = null;
+  let isDraggingComparison = false;
   let geojsonLayer;
   let selectedCountryPolygon = null;
   let selectedCountryName = null;
@@ -40,7 +53,67 @@
   const MIN_AREA_KM2 = 3_000_000; // z.B. ~ Australien
   let blinkingLayers = [];
   let allCountriesWithArea = [];
+  let activeMode = "country"; // default
+  let comparisonBaseFeature = null;   // NIE verändern
+  let comparisonOffset = { km: 0, bearing: 0 };
 
+  const pencilButtons = document.querySelectorAll(".controls.pencil button");
+
+  pencilButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      // UI
+      pencilButtons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      // Mode setzen
+      activeMode = btn.dataset.mode;
+
+      // Cleanup
+      resetModes();
+    });
+  });
+
+  function resetModes() {
+    // Flight cleanup
+    measurePoints = [];
+    clearMeasurement();
+
+    // Map cursor
+    map.getContainer().classList.toggle(
+      "flight-mode",
+      activeMode === "distance"
+    );
+
+    if (activeMode === "country") {
+      startAreaBasedBlinking();
+    } else {
+      stopAreaBasedBlinking();
+    }
+  }
+
+
+  map.on("click", (e) => {
+    switch (activeMode) {
+      case "distance":
+        handleDistanceClick(e);
+        break;
+
+      case "trip":
+        handleTripClick(e);
+        break;
+
+      case "country":
+      default:
+        // Länder werden über onEachCountry behandelt
+        break;
+    }
+  });
+
+  map.on("contextmenu", () => {
+    if (activeMode === "distance") {
+      clearMeasurement(true);
+    }
+  });
   // function startRandomHighlight() {
   //   randomHighlightInterval = setInterval(() => {
   //     // Nur wenn kein Land ausgewählt ist
@@ -82,25 +155,38 @@
   }
 
   
+  let blinkInterval = null;
+
   function startAreaBasedBlinking() {
-    setInterval(() => {
+    if (blinkInterval) return;
+
+    blinkInterval = setInterval(() => {
+      if (activeMode !== "country") return;
       if (selectedCountryLayer) return;
 
       blinkingLayers.forEach(l => removeClass(l, "country-blink"));
       blinkingLayers = [];
 
       let totalArea = 0;
-
       const shuffled = [...allCountriesWithArea].sort(() => Math.random() - 0.5);
 
       for (const { layer, areaKm2 } of shuffled) {
         addClass(layer, "country-blink");
         blinkingLayers.push(layer);
         totalArea += areaKm2;
-
         if (totalArea >= MIN_AREA_KM2) break;
       }
     }, BLINK_INTERVAL_MS);
+  }
+
+  function stopAreaBasedBlinking() {
+    if (!blinkInterval) return;
+
+    clearInterval(blinkInterval);
+    blinkInterval = null;
+
+    blinkingLayers.forEach(l => removeClass(l, "country-blink"));
+    blinkingLayers = [];
   }
 
 
@@ -108,6 +194,7 @@
   function onEachCountry(feature, layer) {
     layer.on({
       mouseover: () => {
+        if (activeMode !== "country") return;
         if (layer !== selectedCountryLayer) {
           addClass(layer, "country-hover");
         }
@@ -120,12 +207,14 @@
       },
 
       click: () => {
+        if (activeMode !== "country") return;
         if (layer === selectedCountryLayer) {
           removeClass(layer, "country-selected");
           selectedCountryLayer = null;
           selectedCountryPolygon = null;
           selectedCountryName = null;
-          infoPanel.textContent = "Klicke ein Land, um Infos zu sehen.";
+          infoContent.style.display = "none";
+          infoName.style.display = "none";
           return;
         }
 
@@ -136,6 +225,7 @@
         selectedCountryLayer = layer;
         selectedCountryPolygon = feature.geometry;
         selectedCountryName = feature.properties.ADMIN;
+        createComparisonCopy(feature, layer.getBounds().getCenter());
 
         addClass(layer, "country-selected");
         removeClass(layer, "country-hover");
@@ -143,9 +233,110 @@
           removeClass(blinkLayer, "country-blink");
         }
         blinkingLayers = [];
-        infoPanel.textContent = `Ausgewähltes Land: ${selectedCountryName}`;
+        infoName.textContent = selectedCountryName;
+        infoContent.style.display = "flex";
+        infoName.style.display = "flex";
+        
         fetchAIIntro(selectedCountryName);
+        fetchRestCountries(selectedCountryName);
+
       }
+    });
+  }
+
+  function createComparisonCopy(feature, referenceLatLng) {
+    if (comparisonLayer) map.removeLayer(comparisonLayer);
+
+    let base = turf.clone(feature);
+
+    // Mercator-Korrektur EINMAL
+    base = scaleCountryRealistic(base, referenceLatLng.lat);
+
+    comparisonBaseFeature = base;
+    comparisonOffset = { km: 0, bearing: 0 };
+
+    renderComparison(referenceLatLng);
+    enableComparisonDragging();
+  }
+
+  function renderComparison(targetLatLng) {
+    let rendered = turf.clone(comparisonBaseFeature);
+
+    const from = turf.centroid(rendered);
+    const to = turf.point([targetLatLng.lng, targetLatLng.lat]);
+
+    const km = turf.distance(from, to, { units: "kilometers" });
+    const bearing = turf.bearing(from, to);
+
+    rendered = turf.transformTranslate(rendered, km, bearing, {
+      units: "kilometers"
+    });
+
+    comparisonFeature = rendered;
+
+    if (comparisonLayer) map.removeLayer(comparisonLayer);
+    comparisonLayer = L.geoJSON(rendered, {
+      className: "country comparison",
+      style: {
+        color: "#00ffff",
+        weight: 2,
+        fillOpacity: 0.15
+      }
+    }).addTo(map);
+  }
+
+
+  function translateToLatLng(feature, targetLatLng) {
+    const centroid = turf.centroid(feature).geometry.coordinates;
+
+    const from = turf.point(centroid);
+    const to = turf.point([targetLatLng.lng, targetLatLng.lat]);
+
+    const distanceKm = turf.distance(from, to, { units: "kilometers" });
+    const bearing = turf.bearing(from, to);
+
+    return turf.transformTranslate(feature, distanceKm, bearing, {
+      units: "kilometers"
+    });
+  }
+
+  function scaleCountryRealistic(feature, targetLat = 0) {
+    const centroid = turf.centroid(feature).geometry.coordinates;
+    const lat = centroid[1];
+
+    // Mercator-Korrektur (sehr wichtig)
+    const scaleCorrection =
+      Math.cos((lat * Math.PI) / 180) /
+      Math.cos((targetLat * Math.PI) / 180);
+
+    return turf.transformScale(feature, scaleCorrection, {
+      origin: "centroid"
+    });
+  }
+
+
+  function enableComparisonDragging() {
+    if (!comparisonLayer) return;
+
+    comparisonLayer.eachLayer(layer => {
+      layer.on("mousedown", e => {
+        isDraggingComparison = true;
+        map.dragging.disable();
+      });
+    });
+
+    map.on("mousemove", e => {
+      console.log("mousemove");
+      console.log(isDraggingComparison, comparisonBaseFeature);
+      if (!isDraggingComparison || !comparisonBaseFeature) return;
+
+      renderComparison(e.latlng);
+    });
+
+
+    map.on("mouseup", () => {
+      isDraggingComparison = false;
+      map.dragging.enable();
     });
   }
 
@@ -176,7 +367,7 @@
     });
 
     if (!res.ok) {
-      infoPanel.textContent = "KI-Text konnte nicht geladen werden.";
+      infoContent.textContent = "AI unavailable, loading wikipedia…";
       setTimeout(() => {
         fetchWikiIntro(countryName);
       }, 2000);
@@ -184,7 +375,7 @@
     }
 
     const data = await res.json();
-    infoPanel.textContent = data.text;
+    infoContent.textContent = data.text;
   }
 
   
@@ -195,133 +386,204 @@
   };
 
   async function fetchWikiIntro(countryName) {
-    infoPanel.textContent = `Lade Infos zu ${countryName}…`;
+    infoContent.textContent = `AI unavailable, loading wikipedia…`;
     try {
       const wikiTitle = countryToWiki[countryName] || countryName;
       const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitle)}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Wikipedia-Eintrag nicht gefunden.");
       const data = await res.json();
-      infoPanel.textContent = data.extract || "Keine Informationen verfügbar.";
+      infoContent.textContent = data.extract || "Keine Informationen verfügbar.";
     } catch(e) {
-      infoPanel.textContent = `Fehler beim Laden von ${countryName}.`;
+      infoContent.textContent = `Fehler beim Laden von ${countryName}.`;
       console.error(e);
     }
   }
 
+  async function fetchRestCountries(countryName) {
+    infoContent.innerHTML = "Loading country data…";
+
+    const res = await fetch(
+      `https://restcountries.com/v3.1/name/${encodeURIComponent(countryName)}?fullText=true`
+    );
+
+    if (!res.ok) {
+      // infoContent.textContent = "No country data found.";
+      return;
+    }
+
+    const [country] = await res.json();
+
+    renderCountryAttributes(country);
+  }
+
+  function renderCountryAttributes(country) {
+    // infoContent.innerHTML = "";
+    const keysIWant = [
+      "population",
+      "timezones",
+      "flag",
+      "languages",
+      "capital",
+      "currencies"
+    ];
+    let i = 0;
+    for (const [key, value] of Object.entries(country)) {
+      // if (i++ >= 3) break;
+      if (!keysIWant.includes(key)) continue;
+      const content = document.createElement("div");
+      content.classList.add("restInfoTile", "scroll-text");
+      content.textContent = formatValue(value);
+      infoRest.appendChild(content);
+    }
+  }
+
+  function formatValue(value) {
+    if (value == null) return "—";
+
+    if (Array.isArray(value)) {
+      return value.map(v => formatValue(v)).join(", ");
+    }
+
+    if (typeof value === "object") {
+      return Object.values(value)
+        .map(v => formatValue(v))
+        .join(", ");
+    }
+
+    return value.toString();
+  }
+
+
   // Zoom Buttons
   document.getElementById("myZoomIn").addEventListener("click", () => map.zoomIn());
   document.getElementById("myZoomOut").addEventListener("click", () => map.zoomOut());
-  
-  // Flugzeug-Logik
-  const planeIcon = L.icon({
-    iconUrl: "./Assets/plane.png", // <-- DEIN Flugzeugbild
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    className: "plane-icon"
-  });
-  let planeMarkers = [];
-  let selectedRoute = null;
-  let buttonCooldown = false;
 
-  const loadPlanesBtn = document.getElementById('loadPlanesBtn');
-  loadPlanesBtn.addEventListener('click', async () => {loadPlanes()});
+  let flightMode = false;
+  let measurePoints = [];
+  let measureLayer = null;
+  let measureLabels = [];
+  let measureHandles = [];
 
-  function pointInPolygon(point, polygon) {
-    const [x, y] = point;
-
-    const rings =
-      polygon.type === "Polygon"
-        ? polygon.coordinates
-        : polygon.coordinates.flat();
-
-    return rings.some(ring => {
-      let inside = false;
-      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-        const xi = ring[i][0], yi = ring[i][1];
-        const xj = ring[j][0], yj = ring[j][1];
-
-        const intersect =
-          yi > y !== yj > y &&
-          x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    });
+  function handleDistanceClick(e) {
+    measurePoints.push(e.latlng);
+    createHandle(e.latlng, measurePoints.length - 1);
+    redrawMeasurement();
   }
 
+  function redrawMeasurement() {
+    clearMeasurement(false);
 
-  async function loadPlanes() {
-    if (!selectedCountryPolygon) {
-      alert("Bitte zuerst ein Land auswählen.");
-      return;
-    }
-    try {
-      const res = await fetch("/api/getPlanes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ countryName: selectedCountryName })
-      });
+    if (measurePoints.length < 2) return;
 
-      if (!res.ok) throw new Error("API Fehler");
-
-      const { planes } = await res.json();
-
-      // Alte Marker entfernen
-      planeMarkers.forEach(m => map.removeLayer(m));
-      if(selectedRoute) { map.removeLayer(selectedRoute); selectedRoute = null; }
-      planeMarkers = [];
-
-      planes.forEach(f => {
-        const marker = L.marker([f.lat, f.lon], { icon: planeIcon, pane: "markerPane" }).addTo(map);
-        marker.planeData = {
-          start: [f.lat, f.lon],
-          end: f.destination ? countryCapitals[f.destination] || null : null,
-          callsign: f.callsign,
-          country: f.originCountry
-        };
-
-        marker.on("mouseover", () => marker.getElement()?.classList.add("hovered"));
-        marker.on("mouseout", () => marker.getElement()?.classList.remove("hovered"));
-        marker.on("click", () => highlightPlane(marker));
-
-        planeMarkers.push(marker);
-      });
-
-      console.log(`Es wurden ${planeMarkers.length} Flugzeuge geladen.`);
-      console.log(`Es wurden ${planes.length} Flugzeuge gefunden.`);
-    } catch(err) {
-      console.error("Fehler beim Laden der AviationStack-Daten:", err);
-      alert("Flugzeugdaten konnten nicht geladen werden.");
-    }
-  }
-
-
-  function highlightPlane(selected) {
-    planeMarkers.forEach(m => {
-      const el = m.getElement();
-      if (!el) return;
-
-      if (m === selected) {
-        el.classList.remove("dimmed");
-      } else {
-        el.classList.add("dimmed");
-      }
-    });
-
-    if (selectedRoute) map.removeLayer(selectedRoute);
-
-    const p = selected.planeData;
-    if (p.end) {
-      selectedRoute = L.polyline([p.start, p.end], {
-        color: "red",
+    if (measurePoints.length === 2) {
+      measureLayer = L.polyline(measurePoints, {
+        color: "white",
         weight: 2
       }).addTo(map);
 
-      map.fitBounds([p.start, p.end], { padding: [50, 50] });
+      addEdgeLabels(measurePoints);
+    } else {
+      measureLayer = L.polygon(measurePoints, {
+        color: "white",
+        fillOpacity: 0.2
+      }).addTo(map);
+
+      addEdgeLabels(measurePoints, true);
+      addAreaLabel(measurePoints);
     }
   }
+
+
+  function addEdgeLabels(points, closed = false) {
+    const pts = closed ? [...points, points[0]] : points;
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+
+      const len = turf.distance(
+        [a.lng, a.lat],
+        [b.lng, b.lat],
+        { units: "kilometers" }
+      );
+
+      const mid = L.latLng(
+        (a.lat + b.lat) / 2,
+        (a.lng + b.lng) / 2
+      );
+
+      const label = L.marker(mid, {
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="edge-label">${len.toFixed(2)} km</div>`
+          // iconAnchor: [0, 0]
+
+        })
+      }).addTo(map);
+
+      measureLabels.push(label);
+    }
+  }
+
+  function addAreaLabel(points) {
+    const coords = [...points, points[0]].map(p => [p.lng, p.lat]);
+
+    const area = turf.area(turf.polygon([coords])) / 1_000_000;
+
+    const center = turf.centroid(turf.polygon([coords])).geometry.coordinates;
+
+    const label = L.marker([center[1], center[0]], {
+      icon: L.divIcon({
+        className: "",
+        html: `<div class="area-label">${area.toFixed(2)} km²</div>`
+      })
+    }).addTo(map);
+
+    measureLabels.push(label);
+  }
+
+  function clearMeasurement(resetPoints = true) {
+    if (measureLayer) map.removeLayer(measureLayer);
+    measureLabels.forEach(l => map.removeLayer(l));
+
+    measureLayer = null;
+    measureLabels = [];
+
+    if (resetPoints) {
+      measureHandles.forEach(h => map.removeLayer(h));
+      measureHandles = [];
+      measurePoints = [];
+    }
+  }
+
+  function createHandle(latlng, index) {
+    const handle = L.marker(latlng, {
+      draggable: true,
+      icon: L.divIcon({
+        className: "measure-handle",
+        iconSize: [12, 12]
+      })
+    }).addTo(map);
+
+    handle.on("dragstart", () => {
+      map.dragging.disable();
+    });
+
+    handle.on("drag", (e) => {
+      measurePoints[index] = e.target.getLatLng();
+      redrawMeasurement();
+    });
+
+    handle.on("dragend", () => {
+      map.dragging.enable();
+    });
+
+    measureHandles.push(handle);
+  }
+
+
+
 </script>
 
 </body>

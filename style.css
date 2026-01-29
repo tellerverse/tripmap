@@ -3,7 +3,7 @@
     --highcolor: #ff5500;
     --bgcolor: #00000055;
     --bgcolordark: #000000cc;
-    --bgcolorlight: #ffffffcc;
+    --bgcolorlight: #d9d9d9cc;
 }
 @font-face {
     font-family: 'Burbank';
@@ -27,140 +27,219 @@ body, html {
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-position: center;
     -webkit-mask-size: contain;
-            mask-image: var(--icon-url);
-            mask-repeat: no-repeat;
-            mask-position: center;
-            mask-size: contain;
+    mask-image: var(--icon-url);
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
 }
 
 
 html, body { height: 100%; margin: 0; }
-#map { width: 100%; height: 100%; }
-.leaflet-tile { filter: saturate(1.9) contrast(1.1); }
+#map { 
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+.leaflet-tile { filter: brightness(.7) saturate(1.9) contrast(1.1); }
 
 .controls {
-    font-size: 1.5rem;
-    margin: 5 0px;
-    font-family: 'Reem Kufi';
+    flex-direction: column;
     position: absolute;
-    top: 10px;
-    left: 10px;
     z-index: 1000;
-    padding: 3px 10px;
+    padding: 5px;
     color: var(--color);
     background: var(--bgcolor);
     border: 3px solid var(--color);
     border-radius: 10px;
-    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-#infoPanel {
-    font-size: 1.5rem;
-    margin: 5 0px;
-    font-family: 'Reem Kufi';
-    position: absolute;
+.options {
+    top: 10px;
+    left: 10px;
+}
+
+.pencil {
     bottom: 10px;
+    left: 10px;
+}
+
+.controls:hover {
+    background: var(--bgcolorlight);
+    border: 3px solid #000;
+}
+
+.details:hover button {
+    margin: 5px 25px 5px 5px;
+}
+
+.controls button {
+    width: 45px;
+    height: 45px;
+    font-size: 1.5rem;
+    margin: 5px;
+    color: var(--color);
+    background: var(--bgcolor);
+    border: none;
+    border-radius: 10px;
+    /* cursor: pointer; */
+    transition: all 0.3s ease;
+}
+
+.controls button:active {
+    background: var(--bgcolorlight);
+    /* box-shadow: 0 0 0 3px #000 inset; */
+}
+
+.details:hover span {
+    font-size: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.controls span {
+    text-align: right;
+    font-size: 0rem;
+    font-family: 'Reem Kufi';
+    font-weight: bold;
+    user-select: none;
+}
+.controls.pencil button.active {
+  /* box-shadow: 0 0 8px var(--highcolor); */
+  /* transform: scale(0.7); */
+  background: var(--bgcolorlight);
+  box-shadow: 0 0 0 3px #000 inset;
+}
+
+.function {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+#infoRest {
+    display: none;
+    position: absolute;
+    bottom: 50%;
     right: 10px;
     max-width: 20%;
+    min-width: 50px;
+    z-index: 401;
+    flex-direction: column;
+    overflow: hidden;
+    transition: max-width 0.3s ease, max-height 0.3s ease, background 3s ease, border .3s ease;
+}
+#infoPanel {
+    display: none;
+    position: absolute;
+    bottom: 20px;
+    right: 10px;
+    max-width: 20%;
+    min-width: 300px;
     max-height: 30%;
-    z-index: 1000;
+    z-index: 401;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: max-width 0.3s ease, max-height 0.3s ease, background 3s ease, border .3s ease;
+}
+.restInfoTile,
+#infoName,
+#infoContent {
+    font-size: 1.5rem;
+    font-family: 'Reem Kufi';
+    margin: 5px;
     padding: 3px 10px;
     color: var(--color);
     background: var(--bgcolor);
     border: 3px solid var(--color);
     border-radius: 10px;
-    cursor: pointer;
-    overflow-y: auto;       /* vertikales Scrollen */
-    overflow-x: hidden;     /* horizontales Scrollen verhindern */
-    scrollbar-width: thin;
-    scrollbar-color: var(--color) var(--bgcolor);
+    cursor: default;
     transition: max-width 0.3s ease, max-height 0.3s ease, background 3s ease, border .3s ease;
 }
 
+#infoName,
+#infoContent {
+    display: none;
+}
+
+#infoName {
+    font-size: 2rem;
+    font-weight: bold;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+#infoContent {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color) var(--bgcolor);
+}
+
+#infoPanel:hover #infoContent,
+#infoPanel:hover #infoName {
+    background: var(--bgcolorlight);
+    border: 3px solid #000;
+}
 #infoPanel:hover {
     max-width: 35%;
     max-height: 50%;
-    background: var(--bgcolorlight);
-    border: 5px solid #000;
 }
-
-/* Chrome, Edge, Safari */
-#infoPanel::-webkit-scrollbar {
+#infoPanel:hover + #infoRest {
+    display: flex;
+}
+#infoContent::-webkit-scrollbar {
     width: 8px;
 }
 
-#infoPanel::-webkit-scrollbar-track {
+#infoContent::-webkit-scrollbar-track {
     background: var(--bgcolor);
     border-radius: 10px;
 }
 
-#infoPanel::-webkit-scrollbar-thumb {
+#infoContent::-webkit-scrollbar-thumb {
     background-color: var(--highcolor);
     border-radius: 10px;
     border: 2px solid var(--bgcolor);
 }
 
-#infoPanel::-webkit-scrollbar-thumb:hover {
+#infoContent::-webkit-scrollbar-thumb:hover {
     background-color: #ff7700;
 }
 
-.controls button {
+.flight-mode {
+    cursor: crosshair;
+}
+
+.flight-line {
+    stroke: #ff0000;
+    stroke-width: 5;
+}
+
+.flight-label {
     font-family: 'Reem Kufi';
-    width: 45px;
-    height: 45px;
-    font-size: 1.5rem;
-    margin: 5 0px;
-    padding: 3px 0px;
-    color: var(--color);
-    background: var(--bgcolor);
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
+    font-weight: bold;
+    color: #ffffff;
+    font-size: 1rem;
 }
 
-.plane-icon {
-  transition: transform 0.15s ease, opacity 0.15s ease;
-  transform-origin: center center;
-}
-
-.plane-icon.hovered {
-  transform: scale(1.6);
-  z-index: 1000;
-}
-
-.plane-icon.dimmed {
-  opacity: 0.3;
-}
-
-/* #infoPanel {
-  position:absolute;
-  top:0;
-  right:0;
-  width:25%;
-  height:100%;
-  background:#222;
-  color:#fff;
-  padding:15px;
-  overflow:auto;
-} */
-
-/* Basis */
 .country {
-  stroke: #555;
-  stroke-width: 1;
-  fill: #00000000;
-  fill-opacity: 0.0;
-  transition: fill-opacity 0.1s ease, stroke-width 0.1s ease, stroke 0.1s ease;
+    stroke: #555;
+    stroke-width: 1;
+    fill: #00000000;
+    fill-opacity: 0.0;
+    cursor: crosshair;
+    pointer-events: none;
+    transition: fill-opacity 0.1s ease, stroke-width 0.1s ease, stroke 0.1s ease;
 }
 
-/* Hover */
 .country-hover {
     stroke-width: 4 !important;
     fill: #000;
     fill-opacity: 0.216;
+    cursor: crosshair;
 }
 
-/* Selected */
 .country-selected {
     stroke-width: 4;
     fill: #000;
@@ -168,11 +247,63 @@ html, body { height: 100%; margin: 0; }
     stroke: #000;
     transition: fill-opacity 3s ease, stroke-width 3s ease, stroke 3s ease;
 }
-/* Blinking */
+
 .country-blink {
     stroke-width: 2;
     fill: #000;
     fill-opacity: 0.216;
     transition: fill-opacity 0.1s ease, stroke-width 0.1s ease, stroke 0.1s ease;
+}
 
+.restInfoTile {
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.scroll-text {
+  display: inline-block;
+  padding-left: 100%;
+  animation: scroll-x 10s linear infinite;
+}
+
+@keyframes scroll-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.edge-label,
+.area-label {
+    background: black;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+
+    display: inline-block;
+    line-height: 1.2;
+    transform: translate(-50%, -50%);
+}
+
+.measure-handle {
+  width: 12px;
+  height: 12px;
+  background: black;
+  border: 2px solid white;
+  border-radius: 50%;
+  cursor: grab;
+}
+
+.country.comparison {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.country.comparison:active {
+  cursor: grabbing;
 }
