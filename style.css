@@ -1,6 +1,6 @@
 :root {
     --color: #000;
-    --highcolor: #ff5500;
+    --highcolor: #888888;
     --bgcolor: #00000055;
     --bgcolordark: #000000cc;
     --bgcolorlight: #d9d9d9cc;
@@ -43,6 +43,7 @@ html, body { height: 100%; margin: 0; }
 .leaflet-tile { filter: brightness(.7) saturate(1.9) contrast(1.1); }
 
 .controls {
+    backdrop-filter: blur(4px);
     flex-direction: column;
     position: absolute;
     z-index: 1000;
@@ -91,6 +92,11 @@ html, body { height: 100%; margin: 0; }
     /* box-shadow: 0 0 0 3px #000 inset; */
 }
 
+.controls button:hover {
+    /* background: var(--bgcolordark); */
+    box-shadow: 0 0 0 3px #000 inset;
+}
+
 .details:hover span {
     font-size: 1.5rem;
     transition: all 0.3s ease;
@@ -127,6 +133,7 @@ html, body { height: 100%; margin: 0; }
     overflow: hidden;
     transition: max-width 0.3s ease, max-height 0.3s ease, background 3s ease, border .3s ease;
 }
+
 #infoPanel {
     display: none;
     position: absolute;
@@ -141,9 +148,11 @@ html, body { height: 100%; margin: 0; }
     overflow: hidden;
     transition: max-width 0.3s ease, max-height 0.3s ease, background 3s ease, border .3s ease;
 }
+
 .restInfoTile,
 #infoName,
 #infoContent {
+    backdrop-filter: blur(4px);
     font-size: 1.5rem;
     font-family: 'Reem Kufi';
     margin: 5px;
@@ -262,9 +271,9 @@ html, body { height: 100%; margin: 0; }
 }
 
 .scroll-text {
-  display: inline-block;
-  padding-left: 100%;
-  animation: scroll-x 10s linear infinite;
+    display: inline-block;
+    padding-left: 100%;
+    animation: scroll-x 10s linear infinite;
 }
 
 @keyframes scroll-x {
@@ -291,19 +300,112 @@ html, body { height: 100%; margin: 0; }
 }
 
 .measure-handle {
-  width: 12px;
-  height: 12px;
-  background: black;
-  border: 2px solid white;
-  border-radius: 50%;
-  cursor: grab;
+    width: 12px;
+    height: 12px;
+    background: black;
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: grab;
 }
 
 .country.comparison {
-  pointer-events: auto;
-  cursor: grab;
+    pointer-events: all;
+    cursor: grab;
+    stroke-width: 4;
+    fill: #000;
+    fill-opacity: 0.8;
+    stroke: #000;
+    transition: fill-opacity 3s ease, stroke-width 3s ease, stroke 3s ease;
+
 }
 
 .country.comparison:active {
   cursor: grabbing;
+}
+
+
+.teleport-panel {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    z-index: 1001;
+
+    transform: translateX(-50%);
+
+    gap: 6px;
+
+    padding: 2px;
+    background: var(--bgcolor);
+    border: 3px solid var(--color);
+    border-radius: 10px;
+
+    backdrop-filter: blur(4px);
+    transition: all 0.3s ease;
+}
+
+.teleport-panel:hover {
+    background: var(--bgcolorlight);
+    border-color: #000;
+    transform: translateX(-50%) translateY(50%) scale(1.5);
+}
+
+/* .teleport-panel input {
+    font-family: 'Reem Kufi';
+    font-size: 1rem;
+    padding: 6px 8px;
+
+    color: var(--color);
+    background: transparent;
+
+    border: 2px solid var(--color);
+    border-radius: 8px;
+
+    outline: none;
+    transition: background 0.2s ease, border 0.2s ease;
+}
+
+
+
+.teleport-panel input:focus {
+    background: var(--bgcolorlight);
+    border-color: #000;
+} */
+.teleport-panel input,
+.teleport-panel button {
+    font-family: 'Burbank';
+    font-size: 0.8rem;
+    padding: 0 8px;
+    height: 20px;
+    width: 40px;
+    color: var(--color);
+    background: var(--bgcolor);
+
+    border: 2px solid var(--color);
+    border-radius: 8px;
+
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+.teleport-panel input:hover,
+.teleport-panel button:hover {
+    box-shadow: 0 0 0 1px #000 inset;
+}
+.teleport-panel input:active,
+.teleport-panel button:active {
+    background: var(--bgcolorlight);
+}
+.teleport-panel input::placeholder {
+    color: #000000;
+}
+
+.teleport-panel input[type="number"]::-webkit-inner-spin-button,
+.teleport-panel input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Firefox */
+.teleport-panel input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
 }

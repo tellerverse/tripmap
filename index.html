@@ -12,10 +12,11 @@
   <!-- <div class="function"><button id="">✈️</button><span>Option 1</span></div> -->
   <div class="function"><button id="myZoomIn">➕</button><span>Zoom In</span></div>
   <div class="function"><button id="myZoomOut">➖</button><span>Zoom Out</span></div>
+  <div class="function"><button id="myScreenshot">📸</button><span>Snapshot</span></div>
 </div>
 
 <div class="controls pencil">
-  <div class="function"><button data-mode="country">🖱️</button></div>
+  <div class="function"><button data-mode="country" class="active">🖱️</button></div>
   <div class="function"><button data-mode="distance">✈️</button></div>
   <div class="function"><button data-mode="trip">📍</button></div>
 </div>
@@ -24,10 +25,15 @@
   <div id="infoContent">Click on a country to see more information here.</div>
 </div>
 <div id="infoRest"></div>
-
+<div id="teleportPanel" class="teleport-panel">
+  <input id="teleLat" type="number" min="-90" max="90" placeholder="Lat">
+  <input id="teleLng" type="number" min="-180" max="180" placeholder="Lon">
+  <input id="teleZoom" type="number" min="1" max="19" placeholder="Zoom">
+</div>
 <div id="map"></div>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
 <script type="module">
   import { ref, get, set } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-database.js";
   import { db } from "./database.js";
@@ -40,6 +46,8 @@
   const infoName = document.getElementById('infoName');
   const infoRest = document.getElementById('infoRest');
 
+  let comparisonCentroid;
+  let sourceLat;
   let comparisonLayer = null;
   let comparisonFeature = null;
   let isDraggingComparison = false;
@@ -56,6 +64,8 @@
   let activeMode = "country"; // default
   let comparisonBaseFeature = null;   // NIE verändern
   let comparisonOffset = { km: 0, bearing: 0 };
+  let comparisonSourceLat = null;
+  let comparisonTargetLatLng = null;
 
   const pencilButtons = document.querySelectorAll(".controls.pencil button");
 
@@ -69,6 +79,7 @@
       activeMode = btn.dataset.mode;
 
       // Cleanup
+      
       resetModes();
     });
   });
@@ -77,6 +88,19 @@
     // Flight cleanup
     measurePoints = [];
     clearMeasurement();
+    despawnComparison();
+    updateScreenshotButton();
+    if (selectedCountryLayer) {
+      removeClass(selectedCountryLayer, "country-selected");
+      removeClass(selectedCountryLayer, "country-hover");
+
+      selectedCountryLayer = null;
+      selectedCountryPolygon = null;
+      selectedCountryName = null;
+
+      infoContent.style.display = "none";
+      infoName.style.display = "none";
+    }
 
     // Map cursor
     map.getContainer().classList.toggle(
@@ -213,6 +237,7 @@
           selectedCountryLayer = null;
           selectedCountryPolygon = null;
           selectedCountryName = null;
+          despawnComparison();
           infoContent.style.display = "none";
           infoName.style.display = "none";
           return;
@@ -244,38 +269,51 @@
     });
   }
 
-  function createComparisonCopy(feature, referenceLatLng) {
-    if (comparisonLayer) map.removeLayer(comparisonLayer);
+  function createComparisonCopy(feature) {
+    comparisonBaseFeature = turf.clone(feature);
+    comparisonCentroid = turf.centroid(feature);
 
-    let base = turf.clone(feature);
+    // 🔥 Startposition = Original-Land
+    const [lng, lat] = comparisonCentroid.geometry.coordinates;
+    comparisonTargetLatLng = L.latLng(lat, lng);
 
-    // Mercator-Korrektur EINMAL
-    base = scaleCountryRealistic(base, referenceLatLng.lat);
-
-    comparisonBaseFeature = base;
-    comparisonOffset = { km: 0, bearing: 0 };
-
-    renderComparison(referenceLatLng);
+    renderComparison(comparisonTargetLatLng);
     enableComparisonDragging();
   }
 
+
   function renderComparison(targetLatLng) {
-    let rendered = turf.clone(comparisonBaseFeature);
+    const sourceCenter = comparisonCentroid.geometry.coordinates;
+    const sourceLatLng = L.latLng(sourceCenter[1], sourceCenter[0]);
 
-    const from = turf.centroid(rendered);
-    const to = turf.point([targetLatLng.lng, targetLatLng.lat]);
+    const p0 = project(sourceLatLng);
+    const p1 = project(targetLatLng);
 
-    const km = turf.distance(from, to, { units: "kilometers" });
-    const bearing = turf.bearing(from, to);
+    const scale =
+      Math.cos(sourceLatLng.lat * Math.PI / 180) /
+      Math.cos(targetLatLng.lat * Math.PI / 180);
 
-    rendered = turf.transformTranslate(rendered, km, bearing, {
-      units: "kilometers"
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+
+    const moved = turf.clone(comparisonBaseFeature);
+
+    turf.coordEach(moved, coord => {
+      const latlng = L.latLng(coord[1], coord[0]);
+      const p = project(latlng);
+
+      const scaled = L.point(
+        p0.x + (p.x - p0.x) * scale + dx,
+        p0.y + (p.y - p0.y) * scale + dy
+      );
+
+      const ll = unproject(scaled);
+      coord[0] = ll.lng;
+      coord[1] = ll.lat;
     });
 
-    comparisonFeature = rendered;
-
     if (comparisonLayer) map.removeLayer(comparisonLayer);
-    comparisonLayer = L.geoJSON(rendered, {
+    comparisonLayer = L.geoJSON(moved, {
       className: "country comparison",
       style: {
         color: "#00ffff",
@@ -283,8 +321,68 @@
         fillOpacity: 0.15
       }
     }).addTo(map);
+    comparisonLayer.on("mousedown", e => {
+      L.DomEvent.stopPropagation(e);
+      L.DomEvent.preventDefault(e);
+
+      isDraggingComparison = true;
+      map.dragging.disable();
+    });
   }
 
+
+  function project(latlng) {
+    return map.options.crs.project(latlng);
+  }
+
+  function unproject(point) {
+    return map.options.crs.unproject(point);
+  }
+
+
+  function scaleLongitude(feature, centroid, scaleX) {
+    const [cx, cy] = centroid.geometry.coordinates;
+
+    const clone = turf.clone(feature);
+
+    turf.coordEach(clone, coord => {
+      coord[0] = cx + (coord[0] - cx) * scaleX;
+    });
+
+    return clone;
+  }
+
+
+  function moveAndScaleCoords(coords, centerPoint, dx, dy, scale) {
+    if (typeof coords[0] === "number") {
+      const p = map.latLngToLayerPoint([coords[1], coords[0]]);
+
+      const scaled = L.point(
+        centerPoint.x + (p.x - centerPoint.x) * scale + dx,
+        centerPoint.y + (p.y - centerPoint.y) * scale + dy
+      );
+
+      const ll = map.layerPointToLatLng(scaled);
+      return [ll.lng, ll.lat];
+    }
+    return coords.map(c =>
+      moveAndScaleCoords(c, centerPoint, dx, dy, scale)
+    );
+  }
+
+  function despawnComparison() {
+    if (comparisonLayer) {
+      map.removeLayer(comparisonLayer);
+      comparisonLayer = null;
+    }
+
+    comparisonBaseFeature = null;
+    comparisonCentroid = null;
+    comparisonTargetLatLng = null;
+    isDraggingComparison = false;
+
+    map.dragging.enable();
+  }
 
   function translateToLatLng(feature, targetLatLng) {
     const centroid = turf.centroid(feature).geometry.coordinates;
@@ -300,46 +398,29 @@
     });
   }
 
-  function scaleCountryRealistic(feature, targetLat = 0) {
-    const centroid = turf.centroid(feature).geometry.coordinates;
-    const lat = centroid[1];
-
-    // Mercator-Korrektur (sehr wichtig)
-    const scaleCorrection =
-      Math.cos((lat * Math.PI) / 180) /
-      Math.cos((targetLat * Math.PI) / 180);
-
-    return turf.transformScale(feature, scaleCorrection, {
-      origin: "centroid"
-    });
-  }
-
-
   function enableComparisonDragging() {
     if (!comparisonLayer) return;
 
-    comparisonLayer.eachLayer(layer => {
-      layer.on("mousedown", e => {
-        isDraggingComparison = true;
+    map.on("mousedown", e => {
+      if (isDraggingComparison) {
+        L.DomEvent.stopPropagation(e);
         map.dragging.disable();
-      });
+      }
     });
 
     map.on("mousemove", e => {
-      console.log("mousemove");
-      console.log(isDraggingComparison, comparisonBaseFeature);
       if (!isDraggingComparison || !comparisonBaseFeature) return;
 
-      renderComparison(e.latlng);
+      comparisonTargetLatLng = e.latlng;
+      renderComparison(comparisonTargetLatLng);
     });
-
 
     map.on("mouseup", () => {
       isDraggingComparison = false;
       map.dragging.enable();
+      // 🎯 Zielposition bleibt gespeichert
     });
   }
-
 
   fetch("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson")
   .then(res => res.json())
@@ -582,7 +663,118 @@
     measureHandles.push(handle);
   }
 
+  const teleportPanel = document.getElementById("teleportPanel");
 
+  const teleLat = document.getElementById("teleLat");
+  const teleLng = document.getElementById("teleLng");
+  const teleZoom = document.getElementById("teleZoom");
+
+  teleLat.addEventListener("input", applyTeleportInputs);
+  teleLng.addEventListener("input", applyTeleportInputs);
+  teleZoom.addEventListener("input", applyTeleportInputs);
+
+  function applyTeleportInputs() {
+    const lat = parseFloat(teleLat.value);
+    const lng = parseFloat(teleLng.value);
+    const zoom = parseInt(teleZoom.value);
+
+    if (
+      Number.isNaN(lat) ||
+      Number.isNaN(lng) ||
+      Number.isNaN(zoom)
+    ) return;
+
+    map.setView([lat, lng], zoom, { animate: true });
+  }
+
+
+  function updateTeleportInputs() {
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+
+    teleLat.value = center.lat.toFixed(6);
+    teleLng.value = center.lng.toFixed(6);
+    teleZoom.value = zoom;
+  }
+
+  // initial
+  updateTeleportInputs();
+
+  // bei jeder Änderung
+  map.on("moveend zoomend", updateTeleportInputs);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const screenshotButton = document.getElementById("myScreenshot");
+
+  function updateScreenshotButton() {
+    screenshotButton.style.display = activeMode === "distance" ? "inline-block" : "none";
+  }
+
+  updateScreenshotButton();
+  screenshotButton.addEventListener("click", takeMapSnapshot);
+
+  function takeMapSnapshot() {
+    if (!measurePoints || measurePoints.length === 0) {
+      // Kein Punkt, Screenshot des aktuellen Viewports
+      leafletImage(map, (err, canvas) => {
+        if (err) return console.error(err);
+        downloadCanvas(canvas, map.getCenter(), map.getZoom());
+      });
+      return;
+    }
+
+    // Berechne Bounding Box der markierten Punkte
+    const lats = measurePoints.map(p => p.lat);
+    const lngs = measurePoints.map(p => p.lng);
+    const southWest = L.latLng(Math.min(...lats), Math.min(...lngs));
+    const northEast = L.latLng(Math.max(...lats), Math.max(...lngs));
+    const bounds = L.latLngBounds(southWest, northEast);
+
+    // Erstelle temporäre Map, nur für Screenshot
+    const tempMap = map; // Leaflet kann nur das bestehende Canvas nutzen, wir zoomen deshalb so, dass alles passt
+
+    map.fitBounds(bounds, { padding: [20, 20] }); // Zoom, sodass alle Punkte drin sind
+
+    setTimeout(() => {
+      leafletImage(map, (err, canvas) => {
+        if (err) return console.error(err);
+        downloadCanvas(canvas, bounds.getCenter(), map.getZoom());
+        // Zoom wieder zurücksetzen
+        map.fitBounds(bounds, { padding: [0, 0] });
+      });
+    }, 300); // kurz warten, bis Map gerendert ist
+  }
+
+  function downloadCanvas(canvas, center, zoom) {
+    const link = document.createElement("a");
+    link.href = canvas.toDataURL("image/png");
+
+    const lat = center.lat.toFixed(1);
+    const lng = center.lng.toFixed(1);
+    link.download = `Map-Lat${lat}-Lng${lng}-Zm${zoom}.png`;
+    link.click();
+  }
 
 </script>
 
