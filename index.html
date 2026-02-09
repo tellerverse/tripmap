@@ -8,6 +8,12 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+  <div id="tripOverlay" class="trip-overlay" style="display:none;">
+    <div class="overlay-content">
+      <button id="closeOverlay" class="close-btn">✖</button>
+      <div id="overlayImages" class="overlay-images"></div>
+    </div>
+  </div>
 <div class="controls options">
   <div class="function"><button id="myZoomIn">➕</button><span>Zoom In</span></div>
   <div class="function"><button id="myZoomOut">➖</button><span>Zoom Out</span></div>
@@ -701,20 +707,17 @@
   function focusTrip(marker, data) {
     const target = marker.getLatLng();
 
-    // 🔥 Marker links platzieren
+    // Karte leicht verschieben, damit Marker sichtbar bleibt
     const mapSize = map.getSize();
     const point = map.latLngToContainerPoint(target);
-    point.x -= mapSize.x * 0.25; // 25% nach links
-
+    point.x -= mapSize.x * 0.25;
     const newCenter = map.containerPointToLatLng(point);
+    map.setView(newCenter, Math.max(map.getZoom(), 5), { animate: true, duration: 0.6 });
 
-    map.setView(newCenter, Math.max(map.getZoom(), 5), {
-      animate: true,
-      duration: 0.6
-    });
-
-    renderTripPanel(data);
+    // Overlay öffnen
+    renderTripOverlay(data);
   }
+
 
   function renderTripPanel(data) {
     infoName.textContent = data.title;
@@ -853,6 +856,28 @@
     map.removeLayer(marker);
     spawnTripMarker(id, data);
   }
+
+  const overlay = document.getElementById("tripOverlay");
+  const overlayImages = document.getElementById("overlayImages");
+  const closeOverlay = document.getElementById("closeOverlay");
+
+  function renderTripOverlay(data) {
+    overlayImages.innerHTML = ""; // alte Bilder löschen
+    if (!data.images || data.images.length === 0) return;
+
+    data.images.forEach(img => {
+      const el = document.createElement("img");
+      el.src = img;
+      overlayImages.appendChild(el);
+    });
+
+    overlay.style.display = "flex";
+  }
+
+  // schließen
+  closeOverlay.onclick = () => {
+    overlay.style.display = "none";
+  };
 
 
 </script>
