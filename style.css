@@ -409,3 +409,7 @@ html, body { height: 100%; margin: 0; }
     -moz-appearance: textfield;
     appearance: textfield;
 }
+
+.edge-label {
+  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=");
+}
