@@ -8,16 +8,22 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="tripOverlay" class="trip-overlay" style="display:none;">
-    <div class="overlay-content">
-      <button id="closeOverlay" class="close-btn">✖</button>
-      <div id="overlayImages" class="overlay-images"></div>
-    </div>
+<div id="tripOverlay" class="trip-overlay" style="display:none;">
+  <button id="closeOverlay">✖</button>
+  <canvas id="tripCanvas"></canvas>
+
+  <div class="trip-tools">
+    <button id="addImage">🖼️</button>
+    <button id="addText">📝</button>
+    <button id="addRect">⬛</button>
+    <button id="saveCanvas">💾</button>
   </div>
+</div>
 <div class="controls options">
   <div class="function"><button id="myZoomIn">➕</button><span>Zoom In</span></div>
   <div class="function"><button id="myZoomOut">➖</button><span>Zoom Out</span></div>
   <div class="function"><button id="myScreenshot">📸</button><span>Snapshot</span></div>
+  <div class="function"><button id="editButton">📸</button><span>EDIT</span></div>
 </div>
 
 <div class="controls pencil">
@@ -39,6 +45,9 @@
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+
+
 <script type="module">
   import { ref, get, set } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-database.js";
   import { db } from "./database.js";
@@ -704,41 +713,35 @@
 
 
 
-  function focusTrip(marker, data) {
-    const target = marker.getLatLng();
-
-    // Karte leicht verschieben, damit Marker sichtbar bleibt
-    const mapSize = map.getSize();
-    const point = map.latLngToContainerPoint(target);
-    point.x -= mapSize.x * 0.25;
-    const newCenter = map.containerPointToLatLng(point);
-    map.setView(newCenter, Math.max(map.getZoom(), 5), { animate: true, duration: 0.6 });
-
-    // Overlay öffnen
-    renderTripOverlay(data);
-  }
 
 
-  function renderTripPanel(data) {
-    infoName.textContent = data.title;
-    infoContent.innerHTML = `
-      <div class="trip-text">${data.text || "—"}</div>
-      ${data.images.map(img =>
-        `<img src="${img}" style="width:100%;border-radius:8px;margin-top:6px;">`
-      ).join("")}
-    `;
 
-    infoPanel.style.display = "flex";
-    infoName.style.display = "flex";
-    infoContent.style.display = "block";
-  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const TRIP_IMAGE_BASE = "/images/trips/";
+  let nextImageIndex = 1;
 
 
   function spawnTripMarker(id, data) {
     const marker = L.marker([data.lat, data.lng]).addTo(map);
 
-    marker.on("click", () => {
-      focusTrip(marker, data);
+    marker.on("click", async () => {
+      const snap = await get(ref(db, `trips/${id}`));
+      openTripCanvas(id, snap.val());
     });
 
     tripMarkers.set(id, marker);
@@ -783,7 +786,7 @@
       <div class="trip-form">
         <input id="trip-title-${id}" placeholder="Titel">
         <textarea id="trip-text-${id}" placeholder="Beschreibung"></textarea>
-        <input id="trip-images-${id}" type="file" multiple accept="image/*">
+        <input id="trip-images-${id}" multiple accept="image/*">
 
         <button id="save-${id}">💾</button>
         <button id="cancel-${id}">✖</button>
@@ -791,42 +794,6 @@
     `;
   }
 
-
-
-  async function loadTrips() {
-    const res = await fetch("./trips/trips.json");
-    const tripFolders = await res.json();
-
-    for (const folder of tripFolders) {
-      const infoRes = await fetch(`./trips/${folder}/info.json`);
-      const data = await infoRes.json();
-
-      // Bilder automatisch anhand Dateinamen laden
-      const images = [];
-      let i = 1;
-
-      while (true) {
-        const imgUrl = `./trips/${folder}/${i}.jpg`;
-
-        try {
-          const test = await fetch(imgUrl, { method: "HEAD" });
-          if (!test.ok) break;
-          images.push(imgUrl);
-          i++;
-        } catch {
-          break;
-        }
-      }
-
-      spawnTripMarker(folder, {
-        ...data,
-        images
-      });
-    }
-  }
-
-
-  loadTrips();
 
   async function saveTripFromPopup(id, popupEl, marker) {
     const title = popupEl.querySelector(`#trip-title-${id}`).value.trim();
@@ -838,8 +805,6 @@
       return;
     }
 
-    // ⚠️ vorerst: keine Uploads, nur Platzhalter
-    const images = [];
 
     const latlng = marker.getLatLng();
 
@@ -847,36 +812,207 @@
       lat: latlng.lat,
       lng: latlng.lng,
       title,
-      text,
-      images
+      text
     };
 
-    await set(ref(db, `trips/${id}`), data);
+    await set(ref(db, `trips/${id}`), {
+      ...data,
+      canvas: null
+    });
+
 
     map.removeLayer(marker);
     spawnTripMarker(id, data);
   }
 
   const overlay = document.getElementById("tripOverlay");
-  const overlayImages = document.getElementById("overlayImages");
   const closeOverlay = document.getElementById("closeOverlay");
 
-  function renderTripOverlay(data) {
-    overlayImages.innerHTML = ""; // alte Bilder löschen
-    if (!data.images || data.images.length === 0) return;
+  const addImageBtn = document.getElementById("addImage");
+  const addTextBtn = document.getElementById("addText");
+  const addRectBtn = document.getElementById("addRect");
+  const saveCanvasBtn = document.getElementById("saveCanvas");
 
-    data.images.forEach(img => {
-      const el = document.createElement("img");
-      el.src = img;
-      overlayImages.appendChild(el);
-    });
+  // initial ausblenden
+  [addImageBtn, addTextBtn, addRectBtn, saveCanvasBtn].forEach(btn => btn.style.display = "none");
 
-    overlay.style.display = "flex";
-  }
 
   // schließen
   closeOverlay.onclick = () => {
     overlay.style.display = "none";
+  };
+
+  let tripCanvas;
+  let currentTripId = null;
+
+  function openTripCanvas(tripId, data) {
+    const canvasEl = document.getElementById("tripCanvas");
+
+    if (tripCanvas) {
+      tripCanvas.dispose();
+    }
+
+    tripCanvas = new fabric.Canvas(canvasEl, {
+      width: 1200,
+      height: 800,
+      backgroundColor: "#111"
+    });
+
+    if (data.canvas) {
+      tripCanvas.loadFromJSON(data.canvas, () => {
+
+        // Bilder neu verbinden
+        tripCanvas.getObjects("image").forEach(obj => {
+          if (obj.tripImageIndex) {
+            const url = `${TRIP_IMAGE_BASE}${obj.tripImageIndex}.png`;
+            obj.setSrc(url, tripCanvas.renderAll.bind(tripCanvas));
+          }
+        });
+
+        syncNextImageIndex();
+        tripCanvas.renderAll();
+      });
+    }
+    tripCanvas.getObjects().forEach(obj => {
+      obj.selectable = false; // deaktiviert Verschieben, Skalieren, Drehen
+      obj.evented = false;    // deaktiviert Klick-Events auf dem Objekt
+    });
+    tripCanvas.renderAll();
+
+
+    currentTripId = tripId;
+    document.getElementById("tripOverlay").style.display = "flex";
+  }
+
+  function addImage(url) {
+    fabric.Image.fromURL(url, img => {
+      img.set({
+        left: 100,
+        top: 100,
+        scaleX: 0.4,
+        scaleY: 0.4,
+        selectable: true
+      });
+      tripCanvas.add(img);
+    });
+  }
+
+  document.getElementById("addText").onclick = () => {
+    if (!editMode) return
+    const text = new fabric.Textbox("Text", {
+      left: 200,
+      top: 200,
+      fill: "#fff",
+      fontSize: 24,
+      width: 300
+    });
+    tripCanvas.add(text);
+  };
+
+  document.getElementById("addRect").onclick = () => {
+    if (!editMode) return
+    const rect = new fabric.Rect({
+      left: 100,
+      top: 400,
+      width: 200,
+      height: 100,
+      fill: "rgba(255,255,255,0.2)"
+    });
+    tripCanvas.add(rect);
+  };
+
+  async function saveTripCanvas(tripId) {
+    const json = tripCanvas.toJSON(["tripImageIndex"]);
+    await set(ref(db, `trips/${tripId}/canvas`), json);
+  }
+
+  document.getElementById("saveCanvas").onclick = () => {
+    if (!editMode) return
+    saveTripCanvas(currentTripId);
+  };
+
+  async function loadTripsFromFirebase() {
+    const snap = await get(ref(db, "trips"));
+    if (!snap.exists()) return;
+
+    const trips = snap.val();
+    for (const [id, data] of Object.entries(trips)) {
+      spawnTripMarker(id, data);
+    }
+  }
+
+  loadTripsFromFirebase();
+
+  document.getElementById("addImage").onclick = () => {
+    if (!editMode) return
+    spawnNextTripImage();
+  };
+
+  function spawnNextTripImage() {
+    const url = `${TRIP_IMAGE_BASE}${nextImageIndex}.png`;
+
+    fabric.Image.fromURL(url, img => {
+      img.set({
+        left: 100,
+        top: 100,
+        scaleX: 0.4,
+        scaleY: 0.4,
+        selectable: true,
+
+        // 🔒 Metadaten
+        tripImageIndex: nextImageIndex
+      });
+
+      tripCanvas.add(img);
+      tripCanvas.setActiveObject(img);
+
+      nextImageIndex++;
+    }, { crossOrigin: "anonymous" });
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Delete") return;
+
+    const obj = tripCanvas.getActiveObject();
+    if (!obj) return;
+
+    tripCanvas.remove(obj);
+  });
+
+  function syncNextImageIndex() {
+    const used = tripCanvas
+      .getObjects("image")
+      .map(o => o.tripImageIndex || 0);
+
+    nextImageIndex = used.length ? Math.max(...used) + 1 : 1;
+  }
+  const editButton = document.getElementById("editButton");
+  editButton.textContent = "Bearbeiten freischalten";
+
+  let editMode = false;
+
+  editButton.onclick = async () => {
+    if (editMode) return;
+
+    const password = prompt("Passwort eingeben:");
+    if (!password) return;
+
+    const res = await fetch("/api/checkPassword", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      editMode = true;
+      [addImageBtn, addTextBtn, addRectBtn, saveCanvasBtn].forEach(btn => btn.style.display = "inline-block");
+
+      alert("Bearbeitungsmodus aktiviert!");
+      overlay.style.display = "flex"; // z.B. direkt Overlay freischalten
+    } else {
+      alert("Falsches Passwort!");
+    }
   };
 
 
